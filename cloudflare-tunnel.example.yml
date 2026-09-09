@@ -1,0 +1,10 @@
+# Copy to cloudflare-tunnel.yml and fill in your values.
+# Usage: cloudflared tunnel --config cloudflare-tunnel.yml run learning-lens-api
+tunnel: PASTE_YOUR_TUNNEL_ID_HERE
+credentials-file: C:\Users\<you>\.cloudflared\PASTE_YOUR_TUNNEL_ID_HERE.json
+
+ingress:
+  - hostname: api.yourdomain.com
+    service: http://localhost:8000
+  # Catch-all (required, must be last)
+  - service: http_status:404

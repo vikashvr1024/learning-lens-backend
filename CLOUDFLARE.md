@@ -1,60 +1,70 @@
-# Backend on Cloudflare (Workers + Containers)
+# Backend on Cloudflare
 
-Your API code stays 100% Python — nothing in `app/` changed for Cloudflare.
-Cloudflare just requires one tiny JS file (`worker/src/index.js`, ~15 lines)
-that receives internet traffic and hands it to your Python container, which
-runs this repo's `Dockerfile` (uvicorn on port 8000) unchanged.
+## Free account — use Tunnel (only free option)
 
-Render hosting still works as before via `render.yaml`. Both can run side by side.
+Plain Workers cannot run Python/FastAPI, and Containers needs the paid Workers
+plan, so on a free account the backend runs on your own machine (or Render,
+see below) and Cloudflare Tunnel gives it a public `https://` URL on
+Cloudflare's network. Free, no credit card.
 
-## How it works
-
-```
-internet -> Worker (worker/src/index.js) -> container (Dockerfile -> FastAPI)
-                                                     -> Postgres (external, e.g. Render)
-```
-
-Postgres cannot live inside the container (it sleeps when idle), so keep using
-an external database — e.g. the Render Postgres from `render.yaml` — and point
-`DATABASE_URL` at it.
-
-## Deploy from your machine
-
-Requirements: Node.js 20+, Docker running, `wrangler login` done once.
+**1. Start the backend** (as usual):
 
 ```powershell
 cd backend
-npm ci
-npx wrangler secret put DATABASE_URL    # paste your Postgres URL
-npx wrangler secret put SECRET_KEY      # any long random string
-npx wrangler secret put AI_API_KEY      # only if AI_PROVIDER != mock
-npx wrangler deploy
+.venv\Scripts\python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Non-secret settings live in `wrangler.toml` under `[vars]`.
+**2. Expose it** (install `cloudflared` once from cloudflare.com, then):
 
-## Deploy from the dashboard (Workers Builds)
+```powershell
+cloudflared tunnel --url http://localhost:8000
+```
 
-1. Workers & Pages -> open the `learning-lens-backend` worker -> Settings -> Builds,
-   connect the `learning-lens-backend` repo.
-2. Leave Build command empty — `package.json`/`package-lock.json` at the repo
-   root make Cloudflare install dependencies automatically.
-3. Deploy command: `npx wrangler deploy`
-   (Dockerfile builds run in the Builds environment — no local Docker needed.)
-4. Add the same three secrets under Settings -> Variables and Secrets.
-5. Every push to `main` redeploys.
+You get a public URL like `https://random-name.trycloudflare.com`.
+`GET https://<that-url>/health` should return `{"status": "ok", ...}`.
+Run both commands whenever you want the backend live; stop them when you don't.
 
-## After deploy
+**Stable URL (optional, still free):** instead of the quickstart above,
 
-1. Copy your worker URL: `https://learning-lens-api.<you>.workers.dev`
-2. `GET https://<worker>/health` should return `{"status": "ok", ...}`
-   (first hit cold-starts the container: boots uvicorn + runs alembic — slow once).
-3. Add the worker URL to the backend's `FRONTEND_URL` (comma-separated supported)
-   wherever the API runs, and set your frontend's `NEXT_PUBLIC_API_URL` to the worker URL.
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create learning-lens-api
+cloudflared tunnel route dns learning-lens-api api.yourdomain.com
+cloudflared tunnel --config cloudflare-tunnel.example.yml run learning-lens-api
+```
 
-## Notes
+(copy `cloudflare-tunnel.example.yml` to `cloudflare-tunnel.yml`, fill in your
+tunnel ID + hostname first).
 
-- Containers sleep after 30 min idle (`sleepAfter` in `worker/src/index.js`);
-  the next request cold-starts (a few seconds).
-- `max_instances = 2` in `wrangler.toml` caps parallel containers.
-- `wrangler dev` (with Docker running) reproduces the whole setup locally.
+**CORS:** set `FRONTEND_URL` in your backend `.env` to your frontend origin
+(e.g. your Cloudflare Pages URL) and restart uvicorn.
+
+## Free account — alternative: Render (no own machine needed)
+
+Render dashboard -> New -> Blueprint -> select `learning-lens-backend`.
+`render.yaml` provisions API + Postgres on the free tier. Use the Render URL
+as `NEXT_PUBLIC_API_URL` in your frontend.
+
+## Paid account — Workers + Containers (already wired)
+
+Your API code stays 100% Python — nothing in `app/` changed. Cloudflare just
+requires one tiny JS file (`src/index.js`, ~15 lines) that receives traffic
+and hands it to your Python container, which runs this repo's `Dockerfile`
+(uvicorn on port 8000) unchanged.
+
+```
+internet -> Worker (src/index.js) -> container (Dockerfile -> FastAPI)
+                                              -> Postgres (external, e.g. Render)
+```
+
+Postgres cannot live inside the container (it sleeps when idle), so keep using
+an external database and point `DATABASE_URL` at it.
+
+Upgrade Workers to Paid, then either run `npx wrangler deploy` locally
+(after `wrangler login` + `wrangler secret put DATABASE_URL/SECRET_KEY/AI_API_KEY`),
+or connect the repo under Workers & Pages -> Settings -> Builds
+(Build: empty, Deploy: `npx wrangler deploy`, secrets under Variables and Secrets).
+
+Notes: containers sleep after 30 min idle (`sleepAfter` in `src/index.js`);
+`max_instances = 2` caps parallel containers. Non-secret settings live in
+`wrangler.toml` under `[vars]`.
