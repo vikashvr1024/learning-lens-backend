@@ -3,6 +3,7 @@ import json
 from pydantic import ValidationError
 
 from app.ingestion.errors import IngestionError, IngestionIssue
+from app.ingestion.ids import canonical_question_id
 from app.schemas.blueprint import Blueprint
 
 
@@ -20,7 +21,7 @@ def parse_blueprint(content: bytes | str) -> Blueprint:
             )],
         ) from error
     try:
-        return Blueprint.model_validate(raw)
+        blueprint = Blueprint.model_validate(raw)
     except ValidationError as error:
         issues = [
             IngestionIssue(
@@ -34,4 +35,20 @@ def parse_blueprint(content: bytes | str) -> Blueprint:
             for item in error.errors(include_url=False)
         ]
         raise IngestionError("Blueprint validation failed.", issues) from error
+    seen: dict[str, str] = {}
+    for question in blueprint.questions:
+        canonical = canonical_question_id(question.question_id)
+        if canonical in seen:
+            raise IngestionError(
+                f"Blueprint questions {seen[canonical]!r} and {question.question_id!r} "
+                "refer to the same question.",
+                [IngestionIssue(
+                    source="blueprint", code="DUPLICATE_QUESTION", column=question.question_id,
+                    message=f"Duplicate question ID {question.question_id!r}.",
+                    suggested_fix="Give each question a unique number or sub-part label.",
+                )],
+            )
+        seen[canonical] = question.question_id
+        question.question_id = canonical
+    return blueprint
 

@@ -3,6 +3,7 @@ from io import BytesIO
 import pandas as pd
 
 from app.ingestion.errors import IngestionError, IngestionIssue
+from app.ingestion.ids import canonical_question_id
 from app.schemas.blueprint import Blueprint
 
 
@@ -23,6 +24,28 @@ def parse_results_csv(content: bytes, blueprint: Blueprint) -> list[dict]:
     issues: list[IngestionIssue] = []
     required_identity = {"student_id", "student_name"}
     question_ids = {question.question_id for question in blueprint.questions}
+
+    # Headers are matched by canonical ID, so "13(a)", "Q13a" and "q13a" all
+    # refer to the same blueprint question regardless of which file named it.
+    header_map: dict[str, str] = {}
+    canonical_seen: dict[str, str] = {}
+    for column in frame.columns:
+        if column in required_identity:
+            continue
+        try:
+            key = canonical_question_id(column)
+        except ValueError:
+            key = column
+        if key in canonical_seen:
+            issues.append(IngestionIssue(
+                source="performance", code="DUPLICATE_COLUMN", column=column,
+                message=f"Columns {canonical_seen[key]!r} and {column!r} refer to the same question.",
+                suggested_fix="Keep exactly one score column per question.",
+            ))
+        else:
+            canonical_seen[key] = column
+            header_map[column] = key
+    frame = frame.rename(columns=header_map)
     columns = set(frame.columns)
 
     for missing in sorted(required_identity - columns):
@@ -39,10 +62,11 @@ def parse_results_csv(content: bytes, blueprint: Blueprint) -> list[dict]:
         ))
     known = required_identity | question_ids
     for unexpected in sorted(columns - known):
+        original = canonical_seen.get(unexpected, unexpected)
         issues.append(IngestionIssue(
-            source="performance", code="UNEXPECTED_QUESTION", column=unexpected,
-            message=f"Performance file contains {unexpected}, but it does not exist in the blueprint.",
-            actual=unexpected, suggested_fix=f"Remove {unexpected} or add it to the blueprint.",
+            source="performance", code="UNEXPECTED_QUESTION", column=original,
+            message=f"Performance file contains {original}, but it does not exist in the blueprint.",
+            actual=original, suggested_fix=f"Remove {original} or add it to the blueprint.",
         ))
     if issues:
         raise IngestionError("Performance file columns do not match the blueprint.", issues)
