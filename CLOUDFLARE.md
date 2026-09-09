@@ -24,7 +24,7 @@ Requirements: Node.js 20+, Docker running, `wrangler login` done once.
 
 ```powershell
 cd backend
-npm --prefix worker ci
+npm ci
 npx wrangler secret put DATABASE_URL    # paste your Postgres URL
 npx wrangler secret put SECRET_KEY      # any long random string
 npx wrangler secret put AI_API_KEY      # only if AI_PROVIDER != mock
@@ -35,10 +35,11 @@ Non-secret settings live in `wrangler.toml` under `[vars]`.
 
 ## Deploy from the dashboard (Workers Builds)
 
-1. Workers & Pages -> open the `learning-lens-api` worker -> Settings -> Builds,
+1. Workers & Pages -> open the `learning-lens-backend` worker -> Settings -> Builds,
    connect the `learning-lens-backend` repo.
-2. Build command: `npm --prefix worker ci`
-3. Deploy command: `npx -y wrangler deploy`
+2. Leave Build command empty — `package.json`/`package-lock.json` at the repo
+   root make Cloudflare install dependencies automatically.
+3. Deploy command: `npx wrangler deploy`
    (Dockerfile builds run in the Builds environment — no local Docker needed.)
 4. Add the same three secrets under Settings -> Variables and Secrets.
 5. Every push to `main` redeploys.

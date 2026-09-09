@@ -9,5 +9,5 @@ __pycache__/
 coverage/
 # Cloudflare
 .wrangler/
-worker/node_modules/
+node_modules/
 .dev.vars
