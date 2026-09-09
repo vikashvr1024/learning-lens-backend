@@ -34,12 +34,18 @@ class _FakeProvider:
     name = "fake"
     model = "fake-vision-v1"
 
-    def __init__(self, draft):
-        self.draft = draft
+    def __init__(self, drafts):
+        self.drafts = list(drafts)
+        self.calls = 0
 
-    async def extract_blueprint(self, *, system_prompt, paper_text, pdf_bytes, filename):
+    async def extract_blueprint(
+        self, *, system_prompt, paper_text, pdf_bytes, filename, feedback=None,
+    ):
         assert paper_text
-        return self.draft
+        self.calls += 1
+        if self.calls > 1:
+            assert feedback, "retry must carry the validation error back"
+        return self.drafts[min(self.calls - 1, len(self.drafts) - 1)]
 
 
 def _new_assessment(client):
@@ -79,7 +85,7 @@ def test_pdf_endpoint_needs_configured_provider(client):
 
 def test_pdf_endpoint_saves_validated_blueprint(client, monkeypatch):
     monkeypatch.setattr(
-        extraction, "get_ai_provider", lambda settings: _FakeProvider(DRAFT)
+        extraction, "get_ai_provider", lambda settings: _FakeProvider([DRAFT])
     )
     monkeypatch.setattr(
         extraction, "extract_pdf_text", lambda content: "Q1 source of light [2] Q2 mirror [1]",
@@ -97,7 +103,7 @@ def test_pdf_endpoint_saves_validated_blueprint(client, monkeypatch):
 
 def test_pdf_endpoint_rejects_invalid_draft(client, monkeypatch):
     monkeypatch.setattr(
-        extraction, "get_ai_provider", lambda settings: _FakeProvider({"bogus": True})
+        extraction, "get_ai_provider", lambda settings: _FakeProvider([{"bogus": True}])
     )
     monkeypatch.setattr(
         extraction, "extract_pdf_text", lambda content: "Q1 source of light [2]",
@@ -109,4 +115,21 @@ def test_pdf_endpoint_rejects_invalid_draft(client, monkeypatch):
     )
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "BLUEPRINT_INVALID"
+
+
+def test_pdf_endpoint_retries_with_validation_feedback(client, monkeypatch):
+    bad = {"assessment": {**DRAFT["assessment"], "total_marks": 48}, "questions": DRAFT["questions"]}
+    provider = _FakeProvider([bad, DRAFT])
+    monkeypatch.setattr(extraction, "get_ai_provider", lambda settings: provider)
+    monkeypatch.setattr(
+        extraction, "extract_pdf_text", lambda content: "Q1 source of light [2] Q2 mirror [1]",
+    )
+    assessment_id = _new_assessment(client)
+    response = client.post(
+        f"/api/v1/assessments/{assessment_id}/blueprint-pdf",
+        files={"file": ("paper.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    assert provider.calls == 2
+    assert response.json()["validation"]["total_marks"] == 3
 

@@ -23,6 +23,7 @@ class AIProvider(Protocol):
         paper_text: str,
         pdf_bytes: bytes | None,
         filename: str,
+        feedback: str | None = None,
     ) -> dict[str, Any]:
         """Draft a blueprint JSON object from a test paper.
 
