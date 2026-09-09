@@ -1,7 +1,7 @@
 # Cloudflare Workers + Containers config for the FastAPI backend.
 # The Worker (worker/src/index.ts) routes all traffic to one container
 # running this repo's Dockerfile (uvicorn on port 8000).
-name = "learning-lens-api"
+name = "learning-lens-backend"
 main = "worker/src/index.js"
 compatibility_date = "2026-09-09"
 compatibility_flags = ["nodejs_compat"]
