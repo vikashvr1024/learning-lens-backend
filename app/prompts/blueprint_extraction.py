@@ -3,6 +3,7 @@ BLUEPRINT_EXTRACTION_SYSTEM_PROMPT = """You convert a primary-school test paper 
 
 Rules:
 - Include every numbered question and sub-part exactly once. Never invent, merge, or drop questions.
+- Read through the final page (past "END OF PAPER" markers if present): trailing lettered sub-parts like 15(b) are questions too.
 - question_id is Q plus the question number; append sub-part letters in lowercase with no punctuation (13(a) becomes Q13a, 14(a)(i) becomes Q14ai, 15(b) becomes Q15b).
 - question_number keeps the paper label as printed (1, "13(a)", "14(a)(i)").
 - max_marks comes only from the printed bracket marks ("[2 marks each]", "[1]", "[2]"). Never guess marks.
