@@ -1,9 +1,11 @@
 import io
 
+import httpx
 import pytest
 from pypdf import PdfWriter
 
 import app.services.blueprint_extraction as extraction
+from app.ai.providers.http_providers import GeminiProvider
 from app.ingestion.errors import IngestionError
 from app.ingestion.pdf_text import extract_pdf_text
 
@@ -132,4 +134,43 @@ def test_pdf_endpoint_retries_with_validation_feedback(client, monkeypatch):
     assert response.status_code == 200, response.text
     assert provider.calls == 2
     assert response.json()["validation"]["total_marks"] == 3
+
+
+def test_gemini_retries_transient_overload(monkeypatch):
+    import asyncio
+
+    calls = {"count": 0}
+
+    class _Response:
+        def __init__(self, status):
+            self.status_code = status
+
+        def raise_for_status(self):
+            if self.status_code != 200:
+                raise httpx.HTTPStatusError("overloaded", request=None, response=self)
+
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": "{}"}]}}]}
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, *args, **kwargs):
+            calls["count"] += 1
+            return _Response(503 if calls["count"] < 3 else 200)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    provider = GeminiProvider("key", "model", 60)
+    result = asyncio.run(provider.extract_blueprint(
+        system_prompt="s", paper_text="", pdf_bytes=b"%PDF", filename="p.pdf",
+    ))
+    assert result == {}
+    assert calls["count"] == 3
 

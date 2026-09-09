@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import re
@@ -117,35 +118,61 @@ class GeminiProvider:
     def __init__(self, api_key: str, model: str, timeout: int):
         self.api_key, self.model, self.timeout = api_key, model, timeout
 
+    async def _post(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST with retries for transient Gemini overloads (HTTP 500/503).
+
+        Quota errors (HTTP 429) and bad requests are raised immediately with an
+        actionable message instead of being retried.
+        """
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(url, params={"key": self.api_key}, json=payload)
+                    response.raise_for_status()
+                return response.json()
+            except httpx.TimeoutException as error:
+                raise RuntimeError("The AI provider timed out. Please try again.") from error
+            except httpx.HTTPStatusError as error:
+                status = error.response.status_code
+                if status == 429:
+                    raise RuntimeError(
+                        "The AI key hit its Gemini quota/rate limit (HTTP 429). "
+                        "Wait a minute and try again, or check usage in Google AI Studio."
+                    ) from error
+                if status in (500, 503) and attempt < 2:
+                    last_error = error
+                    await asyncio.sleep(2 * (attempt + 1))
+                    continue
+                if status in (500, 503):
+                    raise RuntimeError(
+                        "Gemini is overloaded right now (HTTP "
+                        f"{status}). Wait a minute and try again."
+                    ) from error
+                raise RuntimeError(
+                    f"The AI provider rejected the request (HTTP {status}). "
+                    "Check AI_MODEL and AI_API_KEY."
+                ) from error
+        assert last_error is not None
+        raise RuntimeError("Gemini is overloaded right now. Wait a minute and try again.") from last_error
+
     async def generate_structured(
         self, *, system_prompt: str, evidence: dict[str, Any],
         response_schema: type[BaseModel], feedback: str | None = None,
     ) -> dict[str, Any]:
         prompt = json.dumps({"instructions": system_prompt, "evidence": evidence, "feedback": feedback})
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.post(
-                    url, params={"key": self.api_key},
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0.2,
-                            "maxOutputTokens": 4096,
-                            "thinkingConfig": {"thinkingLevel": "minimal"},
-                            "responseMimeType": "application/json",
-                            "responseJsonSchema": response_schema.model_json_schema(),
-                        },
-                    },
-                )
-                response.raise_for_status()
-            except httpx.TimeoutException as error:
-                raise RuntimeError("The AI provider timed out. Please try again.") from error
-            except httpx.HTTPStatusError as error:
-                raise RuntimeError(
-                    f"The AI provider rejected the request (HTTP {error.response.status_code})."
-                ) from error
-        return _json_from_text(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+        data = await self._post(url, {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 4096,
+                "thinkingConfig": {"thinkingLevel": "minimal"},
+                "responseMimeType": "application/json",
+                "responseJsonSchema": response_schema.model_json_schema(),
+            },
+        })
+        return _json_from_text(data["candidates"][0]["content"]["parts"][0]["text"])
 
     async def extract_blueprint(
         self, *, system_prompt: str, paper_text: str,
@@ -159,26 +186,14 @@ class GeminiProvider:
             }})
         parts.append({"text": json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback})})
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    url, params={"key": self.api_key},
-                    json={
-                        "contents": [{"parts": parts}],
-                        "systemInstruction": {"parts": [{"text": system_prompt}]},
-                        "generationConfig": {
-                            "temperature": 0.1,
-                            "maxOutputTokens": 8192,
-                            "thinkingConfig": {"thinkingLevel": "minimal"},
-                            "responseMimeType": "application/json",
-                        },
-                    },
-                )
-                response.raise_for_status()
-        except httpx.TimeoutException as error:
-            raise RuntimeError("The AI provider timed out. Please try again.") from error
-        except httpx.HTTPStatusError as error:
-            raise RuntimeError(
-                f"The AI provider rejected the request (HTTP {error.response.status_code})."
-            ) from error
-        return _json_from_text(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+        data = await self._post(url, {
+            "contents": [{"parts": parts}],
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 8192,
+                "thinkingConfig": {"thinkingLevel": "minimal"},
+                "responseMimeType": "application/json",
+            },
+        })
+        return _json_from_text(data["candidates"][0]["content"]["parts"][0]["text"])
