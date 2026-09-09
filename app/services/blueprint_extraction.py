@@ -24,6 +24,29 @@ def _describe(error: IngestionError) -> str:
     return f"{error} {details}".strip()
 
 
+def _normalize_totals(draft: dict) -> bool:
+    """Set assessment.total_marks to the exact sum of question max_marks.
+
+    Small models reliably mis-add totals, so arithmetic is done here
+    deterministically instead of trusting the draft. Returns True when a
+    correction was applied. All other validation still applies.
+    """
+    assessment = draft.get("assessment")
+    questions = draft.get("questions")
+    if not isinstance(assessment, dict) or not isinstance(questions, list) or not questions:
+        return False
+    marks = [item.get("max_marks") for item in questions if isinstance(item, dict)]
+    if len(marks) != len(questions):
+        return False
+    if not all(isinstance(mark, (int, float)) and not isinstance(mark, bool) and mark > 0 for mark in marks):
+        return False
+    total = sum(marks)
+    if assessment.get("total_marks") != total:
+        assessment["total_marks"] = total
+        return True
+    return False
+
+
 async def extract_and_save_blueprint(
     db: Session, assessment: Assessment, content: bytes, filename: str, settings: Settings,
 ) -> tuple[dict, Blueprint]:
@@ -67,6 +90,7 @@ async def extract_and_save_blueprint(
                 )],
             )
         else:
+            _normalize_totals(draft)
             try:
                 blueprint = parse_blueprint(json.dumps(draft))
             except IngestionError as error:

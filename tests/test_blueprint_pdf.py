@@ -120,7 +120,8 @@ def test_pdf_endpoint_rejects_invalid_draft(client, monkeypatch):
 
 
 def test_pdf_endpoint_retries_with_validation_feedback(client, monkeypatch):
-    bad = {"assessment": {**DRAFT["assessment"], "total_marks": 48}, "questions": DRAFT["questions"]}
+    bad_question = {key: value for key, value in DRAFT["questions"][0].items() if key != "concept"}
+    bad = {"assessment": DRAFT["assessment"], "questions": [bad_question, DRAFT["questions"][1]]}
     provider = _FakeProvider([bad, DRAFT])
     monkeypatch.setattr(extraction, "get_ai_provider", lambda settings: provider)
     monkeypatch.setattr(
@@ -134,6 +135,23 @@ def test_pdf_endpoint_retries_with_validation_feedback(client, monkeypatch):
     assert response.status_code == 200, response.text
     assert provider.calls == 2
     assert response.json()["validation"]["total_marks"] == 3
+
+
+def test_pdf_endpoint_repairs_wrong_total_deterministically(client, monkeypatch):
+    draft = {"assessment": {**DRAFT["assessment"], "total_marks": 48}, "questions": DRAFT["questions"]}
+    provider = _FakeProvider([draft])
+    monkeypatch.setattr(extraction, "get_ai_provider", lambda settings: provider)
+    monkeypatch.setattr(
+        extraction, "extract_pdf_text", lambda content: "Q1 source of light [2] Q2 mirror [1]",
+    )
+    assessment_id = _new_assessment(client)
+    response = client.post(
+        f"/api/v1/assessments/{assessment_id}/blueprint-pdf",
+        files={"file": ("paper.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    assert provider.calls == 1
+    assert response.json()["validation"] == {"status": "valid", "question_count": 2, "total_marks": 3}
 
 
 def test_gemini_retries_transient_overload(monkeypatch):
