@@ -6,12 +6,13 @@ from sqlalchemy.orm import Session
 from app.ai.factory import get_ai_provider
 from app.core.config import Settings
 from app.ingestion.blueprint import parse_blueprint
+from app.ingestion.csv_results import result_question_ids
 from app.ingestion.errors import IngestionError, IngestionIssue
 from app.ingestion.pdf_text import extract_pdf_text
 from app.models import Assessment
 from app.prompts.blueprint_extraction import BLUEPRINT_EXTRACTION_SYSTEM_PROMPT
 from app.schemas.blueprint import Blueprint
-from app.services.assessments import assessment_summary, save_blueprint
+from app.services.assessments import assessment_summary, import_results, save_blueprint
 
 MAX_EXTRACTION_ATTEMPTS = 3
 
@@ -47,16 +48,43 @@ def _normalize_totals(draft: dict) -> bool:
     return False
 
 
+def _check_required_ids(blueprint: Blueprint, required_ids: list[str]) -> IngestionError | None:
+    """Ensure the draft covers exactly the teacher's scored questions."""
+    have = {question.question_id for question in blueprint.questions}
+    want = set(required_ids)
+    missing = sorted(want - have)
+    extra = sorted(have - want)
+    if not missing and not extra:
+        return None
+    parts = []
+    if missing:
+        parts.append(f"missing {', '.join(missing)}")
+    if extra:
+        parts.append(f"unexpected {', '.join(extra)}")
+    return IngestionError(
+        f"Extracted blueprint does not cover the scored questions ({'; '.join(parts)}).",
+        [IngestionIssue(
+            source="blueprint_pdf", code="EXTRACTION_INCOMPLETE",
+            message=f"Question coverage mismatch: {'; '.join(parts)}.",
+            suggested_fix="The paper was re-read automatically; if this persists, upload the blueprint as JSON.",
+        )],
+    )
+
+
 async def extract_and_save_blueprint(
     db: Session, assessment: Assessment, content: bytes, filename: str, settings: Settings,
-) -> tuple[dict, Blueprint]:
+    results_content: bytes | None = None,
+) -> tuple[dict, Blueprint, int]:
     """Draft a blueprint from a paper PDF with AI, then validate and save it.
 
-    The AI only proposes: each draft goes through parse_blueprint, and its
-    validation errors are fed back so the next attempt adapts. After
-    MAX_EXTRACTION_ATTEMPTS failures the last error is returned to the teacher.
-    save_blueprint then enforces uniqueness, exactly like a JSON upload.
+    When the teacher's scores CSV is supplied, its columns define the exact
+    question inventory the draft must cover, and matching results are imported
+    in the same call. The AI only proposes: parse_blueprint enforces the schema
+    and mark totals, the required-ID check enforces coverage, and
+    save_blueprint enforces uniqueness, exactly like a JSON upload. Scores are
+    never modified: out-of-range marks still fail loudly.
     """
+    required_ids = result_question_ids(results_content) if results_content else None
     try:
         paper_text = extract_pdf_text(content)
     except IngestionError:
@@ -77,6 +105,7 @@ async def extract_and_save_blueprint(
                 pdf_bytes=content if not paper_text else None,
                 filename=filename,
                 feedback=feedback,
+                required_ids=required_ids,
             )
         except (httpx.HTTPError, RuntimeError) as error:
             raise RuntimeError(f"The AI provider could not read the paper: {error}.") from error
@@ -93,11 +122,18 @@ async def extract_and_save_blueprint(
             _normalize_totals(draft)
             try:
                 blueprint = parse_blueprint(json.dumps(draft))
+                if required_ids:
+                    coverage_error = _check_required_ids(blueprint, required_ids)
+                    if coverage_error is not None:
+                        raise coverage_error
             except IngestionError as error:
                 last_error = error
             else:
                 save_blueprint(db, assessment, blueprint)
-                return assessment_summary(assessment), blueprint
+                imported = 0
+                if results_content:
+                    imported = len(import_results(db, assessment, results_content))
+                return assessment_summary(assessment), blueprint, imported
         assert last_error is not None
         feedback = (
             f"Your previous draft failed validation: {_describe(last_error)} "

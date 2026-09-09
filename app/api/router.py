@@ -116,6 +116,7 @@ async def upload_blueprint(assessment_id: str, db: Db, file: UploadFile = File(.
 @router.post("/assessments/{assessment_id}/blueprint-pdf")
 async def upload_blueprint_pdf(
     assessment_id: str, db: Db, file: UploadFile = File(...),
+    results: UploadFile | None = File(None),
     settings: Settings = Depends(get_settings),
 ):
     assessment = get_assessment(db, assessment_id)
@@ -132,9 +133,22 @@ async def upload_blueprint_pdf(
             status_code=413,
             detail={"code": "FILE_TOO_LARGE", "message": "Paper exceeds the 10 MB limit."},
         )
+    results_content: bytes | None = None
+    if results is not None and results.filename:
+        if not results.filename.lower().endswith(".csv"):
+            raise HTTPException(
+                status_code=415,
+                detail={"code": "INVALID_FILE_TYPE", "message": "Performance data must be a .csv file."},
+            )
+        results_content = await results.read()
+        if len(results_content) > 5_000_000:
+            raise HTTPException(
+                status_code=413,
+                detail={"code": "FILE_TOO_LARGE", "message": "Performance file exceeds the 5 MB limit."},
+            )
     try:
-        summary, blueprint = await extract_and_save_blueprint(
-            db, assessment, content, file.filename, settings,
+        summary, blueprint, imported = await extract_and_save_blueprint(
+            db, assessment, content, file.filename, settings, results_content,
         )
     except IngestionError as error:
         raise HTTPException(
@@ -154,7 +168,7 @@ async def upload_blueprint_pdf(
             status_code=503,
             detail={"code": "AI_NOT_CONFIGURED", "message": str(error)},
         ) from error
-    return {
+    payload: dict = {
         "assessment": summary,
         "validation": {
             "status": "valid", "question_count": len(blueprint.questions),
@@ -162,6 +176,9 @@ async def upload_blueprint_pdf(
         },
         "source": "pdf",
     }
+    if results_content is not None:
+        payload["results"] = {"status": "valid", "row_count": imported}
+    return payload
 
 
 @router.post("/assessments/{assessment_id}/results")

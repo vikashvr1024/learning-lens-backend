@@ -24,11 +24,13 @@ class AIProvider(Protocol):
         pdf_bytes: bytes | None,
         filename: str,
         feedback: str | None = None,
+        required_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Draft a blueprint JSON object from a test paper.
 
         Providers without document vision must use paper_text and raise
-        RuntimeError when it is empty (e.g. scanned-image PDFs).
+        RuntimeError when it is empty (e.g. scanned-image PDFs). When
+        required_ids are given, the draft must contain exactly those questions.
         """
         ...
 

@@ -101,6 +101,7 @@ class MockProvider:
     async def extract_blueprint(
         self, *, system_prompt: str, paper_text: str,
         pdf_bytes: bytes | None, filename: str, feedback: str | None = None,
+        required_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         raise RuntimeError(
             "PDF blueprint extraction needs a real AI provider; "

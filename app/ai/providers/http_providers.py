@@ -44,12 +44,13 @@ class OpenAICompatibleProvider:
     async def extract_blueprint(
         self, *, system_prompt: str, paper_text: str,
         pdf_bytes: bytes | None, filename: str, feedback: str | None = None,
+        required_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         if not paper_text.strip():
             raise RuntimeError(
                 "This provider needs readable PDF text; scanned papers require AI_PROVIDER=gemini."
             )
-        prompt = json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback})
+        prompt = json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback, "required_question_ids": required_ids})
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -92,12 +93,13 @@ class AnthropicProvider:
     async def extract_blueprint(
         self, *, system_prompt: str, paper_text: str,
         pdf_bytes: bytes | None, filename: str, feedback: str | None = None,
+        required_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         if not paper_text.strip():
             raise RuntimeError(
                 "This provider needs readable PDF text; scanned papers require AI_PROVIDER=gemini."
             )
-        prompt = json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback})
+        prompt = json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback, "required_question_ids": required_ids})
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -177,6 +179,7 @@ class GeminiProvider:
     async def extract_blueprint(
         self, *, system_prompt: str, paper_text: str,
         pdf_bytes: bytes | None, filename: str, feedback: str | None = None,
+        required_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         parts: list[dict[str, Any]] = []
         if pdf_bytes:
@@ -184,7 +187,7 @@ class GeminiProvider:
                 "mime_type": "application/pdf",
                 "data": base64.b64encode(pdf_bytes).decode("ascii"),
             }})
-        parts.append({"text": json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback})})
+        parts.append({"text": json.dumps({"paper_text": paper_text, "source_file": filename, "feedback": feedback, "required_question_ids": required_ids})})
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         data = await self._post(url, {
             "contents": [{"parts": parts}],

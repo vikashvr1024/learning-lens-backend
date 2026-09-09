@@ -12,4 +12,5 @@ Rules:
 - topic is the broad area (e.g. Light, Shadows, Heat). concept is the specific idea tested. skill is one of Recall, Application, Experimental Skills. cognitive_category is one of Knowledge, Application, Reasoning.
 - assessment.id is a short slug (lowercase letters, digits, dots, underscores, hyphens). Include title, subject, grade, school when printed.
 - Ignore answer schemes, score boxes, cover pages, and advertisements. Map questions, not answers.
+- If required_question_ids are supplied, the blueprint MUST contain exactly that set of question IDs: find each one in the paper and map its marks, topic, concept, skill and cognitive category. Never drop a required ID, never add others.
 - Output only valid JSON matching the requested schema, no commentary."""

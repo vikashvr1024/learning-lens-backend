@@ -42,6 +42,7 @@ class _FakeProvider:
 
     async def extract_blueprint(
         self, *, system_prompt, paper_text, pdf_bytes, filename, feedback=None,
+        required_ids=None,
     ):
         assert paper_text
         self.calls += 1
@@ -152,6 +153,54 @@ def test_pdf_endpoint_repairs_wrong_total_deterministically(client, monkeypatch)
     assert response.status_code == 200, response.text
     assert provider.calls == 1
     assert response.json()["validation"] == {"status": "valid", "question_count": 2, "total_marks": 3}
+
+
+def _pdf_files(csv: bytes | None = None):
+    files = [("file", ("paper.pdf", b"%PDF-1.4 fake", "application/pdf"))]
+    if csv is not None:
+        files.append(("results", ("scores.csv", csv, "text/csv")))
+    return files
+
+
+def test_pdf_endpoint_imports_results_guided_by_csv(client, monkeypatch):
+    provider = _FakeProvider([DRAFT])
+    monkeypatch.setattr(extraction, "get_ai_provider", lambda settings: provider)
+    monkeypatch.setattr(
+        extraction, "extract_pdf_text", lambda content: "Q1 source of light [2] Q2 mirror [1]",
+    )
+    assessment_id = _new_assessment(client)
+    response = client.post(
+        f"/api/v1/assessments/{assessment_id}/blueprint-pdf",
+        files=_pdf_files(b"student_id,student_name,Q1,Q2\nS1,Ana,2,1\n"),
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "pdf"
+    assert payload["results"] == {"status": "valid", "row_count": 1}
+    assert payload["assessment"]["status"] == "ready"
+    students = client.get(f"/api/v1/assessments/{assessment_id}/students").json()
+    assert len(students) == 1
+
+
+def test_pdf_endpoint_rejects_uncoverable_checklist(client, monkeypatch):
+    partial = {"assessment": DRAFT["assessment"], "questions": [DRAFT["questions"][0]]}
+    monkeypatch.setattr(extraction, "get_ai_provider", lambda settings: _FakeProvider([partial]))
+    monkeypatch.setattr(
+        extraction, "extract_pdf_text", lambda content: "Q1 source of light [2]",
+    )
+    assessment_id = _new_assessment(client)
+    response = client.post(
+        f"/api/v1/assessments/{assessment_id}/blueprint-pdf",
+        files=_pdf_files(b"student_id,student_name,Q1,Q2\nS1,Ana,2,1\n"),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "BLUEPRINT_INVALID"
+
+
+def test_result_header_ids():
+    from app.ingestion.csv_results import result_question_ids
+
+    assert result_question_ids(b"student_id,student_name,13(a),Q14ai\n") == ["Q13a", "Q14ai"]
 
 
 def test_gemini_retries_transient_overload(monkeypatch):

@@ -7,6 +7,44 @@ from app.ingestion.ids import canonical_question_id
 from app.schemas.blueprint import Blueprint
 
 
+def result_question_ids(content: bytes) -> list[str]:
+    """Read canonical question IDs from a results CSV header, without a blueprint.
+
+    Used to guide PDF blueprint extraction: the teacher's columns define the
+    exact question inventory the paper must be mapped to.
+    """
+    try:
+        frame = pd.read_csv(BytesIO(content), dtype=str, keep_default_na=False, nrows=0)
+    except Exception as error:
+        raise IngestionError(
+            "Performance file is not a readable CSV.",
+            [IngestionIssue(
+                source="performance",
+                code="MALFORMED_CSV",
+                message=str(error),
+                suggested_fix="Save the file as UTF-8 CSV with one header row.",
+            )],
+        ) from error
+    ids = []
+    for column in frame.columns:
+        if column in {"student_id", "student_name"}:
+            continue
+        try:
+            ids.append(canonical_question_id(column))
+        except ValueError:
+            continue
+    if not ids:
+        raise IngestionError(
+            "Performance file has no question columns.",
+            [IngestionIssue(
+                source="performance", code="MISSING_COLUMN",
+                message="No question score columns found in the CSV header.",
+                suggested_fix="Add one numeric column per blueprint question ID.",
+            )],
+        )
+    return ids
+
+
 def parse_results_csv(content: bytes, blueprint: Blueprint) -> list[dict]:
     try:
         frame = pd.read_csv(BytesIO(content), dtype=str, keep_default_na=False)
