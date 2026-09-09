@@ -97,3 +97,12 @@ class MockProvider:
                 "questions": items,
             }
         raise ValueError(f"Unsupported response schema: {response_schema.__name__}")
+
+    async def extract_blueprint(
+        self, *, system_prompt: str, paper_text: str,
+        pdf_bytes: bytes | None, filename: str,
+    ) -> dict[str, Any]:
+        raise RuntimeError(
+            "PDF blueprint extraction needs a real AI provider; "
+            "AI_PROVIDER=mock cannot read test papers."
+        )

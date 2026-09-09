@@ -26,6 +26,7 @@ from app.services.assessments import (
     load_demo,
     save_blueprint,
 )
+from app.services.blueprint_extraction import extract_and_save_blueprint
 from app.services.generation import generate_artifact
 
 router = APIRouter(prefix="/api/v1")
@@ -109,6 +110,57 @@ async def upload_blueprint(assessment_id: str, db: Db, file: UploadFile = File(.
             "status": "valid", "question_count": len(blueprint.questions),
             "total_marks": blueprint.assessment.total_marks,
         },
+    }
+
+
+@router.post("/assessments/{assessment_id}/blueprint-pdf")
+async def upload_blueprint_pdf(
+    assessment_id: str, db: Db, file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+):
+    assessment = get_assessment(db, assessment_id)
+    if not assessment:
+        raise not_found()
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=415,
+            detail={"code": "INVALID_FILE_TYPE", "message": "Paper must be a .pdf file."},
+        )
+    content = await file.read()
+    if len(content) > 10_000_000:
+        raise HTTPException(
+            status_code=413,
+            detail={"code": "FILE_TOO_LARGE", "message": "Paper exceeds the 10 MB limit."},
+        )
+    try:
+        summary, blueprint = await extract_and_save_blueprint(
+            db, assessment, content, file.filename, settings,
+        )
+    except IngestionError as error:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "BLUEPRINT_INVALID", "message": str(error),
+                "errors": [item.as_dict() for item in error.issues],
+            },
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSESSMENT_CONFLICT", "message": str(error)},
+        ) from error
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AI_NOT_CONFIGURED", "message": str(error)},
+        ) from error
+    return {
+        "assessment": summary,
+        "validation": {
+            "status": "valid", "question_count": len(blueprint.questions),
+            "total_marks": blueprint.assessment.total_marks,
+        },
+        "source": "pdf",
     }
 
 
