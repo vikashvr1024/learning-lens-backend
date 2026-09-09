@@ -1,0 +1,2 @@
+"""Validated public data contracts."""
+

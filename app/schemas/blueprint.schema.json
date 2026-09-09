@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptive-diagnostics.local/schemas/blueprint-1.0.json",
+  "title": "Adaptive Student Diagnostics Blueprint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assessment", "questions"],
+  "properties": {
+    "assessment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "title", "subject", "grade", "total_marks"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9._-]+$"},
+        "title": {"type": "string", "minLength": 1},
+        "subject": {"type": "string", "minLength": 1},
+        "grade": {"type": "string", "minLength": 1},
+        "school": {"type": ["string", "null"]},
+        "total_marks": {"type": "number", "exclusiveMinimum": 0},
+        "language": {"type": "string", "default": "English"},
+        "extensions": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "questions": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["question_id", "question_number", "max_marks", "topic", "concept"],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "question_number": {"type": ["integer", "string"]},
+          "max_marks": {"type": "number", "exclusiveMinimum": 0},
+          "topic": {"type": "string", "minLength": 1},
+          "concept": {"type": "string", "minLength": 1},
+          "subconcept": {"type": ["string", "null"]},
+          "skill": {"type": "string", "default": "Unspecified"},
+          "cognitive_category": {"type": "string", "default": "Unspecified"},
+          "difficulty": {"type": ["string", "null"]},
+          "learning_objectives": {"type": "array", "items": {"type": "string"}},
+          "keywords": {"type": "array", "items": {"type": "string"}},
+          "extensions": {"type": "object", "additionalProperties": true}
+        }
+      }
+    },
+    "extensions": {"type": "object", "additionalProperties": true}
+  },
+  "description": "Question IDs must be unique and total_marks must equal the sum of max_marks. Future metadata belongs in extensions."
+}
+

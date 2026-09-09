@@ -1,0 +1,51 @@
+{
+  "assessment": {
+    "id": "p4-light-wa3",
+    "title": "P4 Science — Light & Shadows",
+    "subject": "Science",
+    "grade": "Primary 4",
+    "school": "Demo School",
+    "total_marks": 20,
+    "language": "English",
+    "extensions": { "term": "Term 3", "paper_version": "A" }
+  },
+  "questions": [
+    {
+      "question_id": "Q1", "question_number": 1, "max_marks": 2,
+      "topic": "Light", "concept": "Sources of Light", "subconcept": "Natural and artificial sources",
+      "skill": "Recall", "cognitive_category": "Knowledge", "difficulty": "Easy",
+      "learning_objectives": ["Identify common sources of light"], "keywords": ["source", "light"], "extensions": {}
+    },
+    {
+      "question_id": "Q2", "question_number": 2, "max_marks": 3,
+      "topic": "Light", "concept": "Light Travels", "subconcept": "Light travels in straight lines",
+      "skill": "Recall", "cognitive_category": "Knowledge", "difficulty": "Easy",
+      "learning_objectives": ["Recognize that light travels in straight lines"], "keywords": ["straight line"], "extensions": {}
+    },
+    {
+      "question_id": "Q3", "question_number": 3, "max_marks": 3,
+      "topic": "Shadows", "concept": "Shadow Formation", "subconcept": "Opaque objects block light",
+      "skill": "Application", "cognitive_category": "Application", "difficulty": "Medium",
+      "learning_objectives": ["Explain how a shadow forms"], "keywords": ["opaque", "blocks light", "shadow"], "extensions": {}
+    },
+    {
+      "question_id": "Q4", "question_number": 4, "max_marks": 4,
+      "topic": "Shadows", "concept": "Shadow Size", "subconcept": "Distance changes shadow size",
+      "skill": "Experimental Skills", "cognitive_category": "Application", "difficulty": "Challenging",
+      "learning_objectives": ["Predict how distance affects shadow size"], "keywords": ["distance", "larger", "smaller"], "extensions": {}
+    },
+    {
+      "question_id": "Q5", "question_number": 5, "max_marks": 4,
+      "topic": "Light", "concept": "Reflection", "subconcept": "Smooth surfaces reflect light",
+      "skill": "Application", "cognitive_category": "Reasoning", "difficulty": "Medium",
+      "learning_objectives": ["Compare how materials reflect light"], "keywords": ["reflect", "surface"], "extensions": {}
+    },
+    {
+      "question_id": "Q6", "question_number": 6, "max_marks": 4,
+      "topic": "Shadows", "concept": "Fair Testing", "subconcept": "Control variables in a light investigation",
+      "skill": "Experimental Skills", "cognitive_category": "Reasoning", "difficulty": "Challenging",
+      "learning_objectives": ["Plan a fair investigation with light"], "keywords": ["fair test", "variable"], "extensions": {}
+    }
+  ],
+  "extensions": { "curriculum": "Demo science framework" }
+}
