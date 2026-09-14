@@ -39,7 +39,13 @@ def build_evidence(
         )
         concepts.append({**metric.model_dump(), "reasoning_type": reasoning_type})
 
-    weak = [item for item in concepts if item["classification"] in {"Needs Support", "Developing"}]
+    weak = sorted(
+        (
+            item for item in concepts
+            if item["classification"] in {"Needs Support", "Developing"}
+        ),
+        key=lambda item: (item["percentage"], item["name"]),
+    )
     strong = [item for item in concepts if item["classification"] in {"Secure", "Strong"}]
     allowed = [item["name"] for item in weak] or [item["name"] for item in concepts]
 
@@ -63,6 +69,7 @@ def build_evidence(
         "weaknesses": weak,
         "strengths": strong,
         "allowed_concepts": allowed,
+        "required_practice_concepts": allowed[:min(question_count, len(allowed))],
         "allowed_question_ids": [question.question_id for question in blueprint.questions],
         "concept_keywords": {
             name: sorted(values["keywords"]) for name, values in concept_context.items()

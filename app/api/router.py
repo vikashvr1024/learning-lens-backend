@@ -42,7 +42,7 @@ class AssessmentCreate(BaseModel):
 class GenerationOptions(BaseModel):
     force: bool = False
     duration_minutes: int = Field(default=30, ge=10, le=120)
-    question_count: int = Field(default=8, ge=3, le=30)
+    question_count: int = Field(default=20, ge=6, le=60)
 
 
 def not_found(kind: str = "Assessment") -> HTTPException:

@@ -65,6 +65,39 @@ def test_complete_demo_flow(client):
     assert downloaded.headers["content-disposition"].startswith("attachment")
 
 
+def test_large_worksheet_covers_priorities_without_repeated_questions(client, db):
+    assessment_id = client.post("/api/v1/demo/load").json()["id"]
+    student_id = client.get(
+        f"/api/v1/assessments/{assessment_id}/students"
+    ).json()[0]["id"]
+    detail = client.get(f"/api/v1/students/{student_id}").json()
+    priority_concepts = {
+        concept["name"]
+        for concept in detail["analysis"]["concepts"]
+        if concept["classification"] in {"Needs Support", "Developing"}
+    }
+
+    response = client.post(
+        f"/api/v1/students/{student_id}/generate-worksheet",
+        json={"question_count": 60},
+    )
+
+    assert response.status_code == 200, response.text
+    questions = response.json()["content"]["questions"]
+    assert len(questions) == 60
+    assert len({question["question"].casefold() for question in questions}) == 60
+    assert priority_concepts <= {question["concept"] for question in questions}
+    record = db.scalar(
+        select(AIGeneration)
+        .where(
+            AIGeneration.student_assessment_id == student_id,
+            AIGeneration.generation_type == "worksheet",
+        )
+        .order_by(AIGeneration.created_at.desc())
+    )
+    assert record.validation_metadata["batch_count"] == 5
+
+
 def test_support_generation_accepts_an_unrelated_blueprint_and_csv(client):
     created = client.post("/api/v1/assessments", json={"title": "New blueprint"}).json()
     blueprint = {

@@ -1,4 +1,4 @@
-WORKSHEET_PROMPT_VERSION = "2.1.0"
+WORKSHEET_PROMPT_VERSION = "3.0.0"
 WORKSHEET_SYSTEM_PROMPT = """Create a supportive exam-revision worksheet that a student at the
 supplied grade and in the supplied subject can complete without a teacher. Ground it only in the
 supplied blueprint concepts, objectives, and keywords. Never invent scores, source question
@@ -19,4 +19,9 @@ earning marks on that question type. marking_notes must state what earns credit.
 supportive language and do not assume an adult is present. Copy every target_concepts item and
 question concept exactly from allowed_concepts; never paraphrase or combine concept names. Create
 exactly options.question_count questions with exactly the requested difficulty_counts distribution.
+Every concept in required_practice_concepts must appear in at least one question before any
+concept is repeated. Create distinct questions that test understanding in different ways. If
+options.batch_number is present, this is one part of a larger worksheet; still return a complete
+WorksheetOutput for this batch and use question IDs starting at options.question_id_start. Never
+repeat or lightly reword anything listed in previous_worksheet_questions.
 Do not promise a particular mark."""

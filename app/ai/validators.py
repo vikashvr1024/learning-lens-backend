@@ -29,11 +29,32 @@ def validate_grounding(output, evidence: dict) -> None:
             raise AIOutputValidationError("Lesson segment minutes do not add up to the duration.")
     elif isinstance(output, WorksheetOutput):
         used = output.target_concepts + [item.concept for item in output.questions]
+        question_concepts = {item.concept for item in output.questions}
+        required = set(evidence.get("required_practice_concepts", []))
+        missing = sorted(required - question_concepts)
+        if missing:
+            raise AIOutputValidationError(
+                "Worksheet did not cover required priority concepts: "
+                f"{', '.join(missing)}."
+            )
         expected = evidence["options"]["question_count"]
         if len(output.questions) != expected:
             raise AIOutputValidationError(f"Worksheet contains {len(output.questions)} questions; expected {expected}.")
         if len({item.id for item in output.questions}) != len(output.questions):
             raise AIOutputValidationError("Worksheet question IDs must be unique.")
+        normalized_questions = {
+            " ".join(item.question.lower().split()) for item in output.questions
+        }
+        if len(normalized_questions) != len(output.questions):
+            raise AIOutputValidationError("Worksheet questions must not be repeated.")
+        previous_questions = {
+            " ".join(question.lower().split())
+            for question in evidence.get("previous_worksheet_questions", [])
+        }
+        if normalized_questions & previous_questions:
+            raise AIOutputValidationError(
+                "Worksheet batch repeated a question from an earlier batch."
+            )
         actual_difficulties = {level: 0 for level in ("easy", "medium", "challenging")}
         for item in output.questions:
             actual_difficulties[item.difficulty] += 1

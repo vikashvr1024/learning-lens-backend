@@ -88,17 +88,23 @@ class MockProvider:
             }
         if response_schema is WorksheetOutput:
             count = evidence["options"]["question_count"]
+            practice_names = (
+                evidence.get("required_practice_concepts")
+                or evidence["allowed_concepts"]
+            )
             types = cycle(["multiple_choice", "fill_blank", "true_false", "short_answer", "structured_response", "scenario_application"])
             difficulty_counts = evidence["options"]["difficulty_counts"]
             difficulties = [level for level, amount in difficulty_counts.items() for _ in range(amount)]
+            question_id_start = evidence["options"].get("question_id_start", 1)
             items = []
             for index in range(count):
-                concept = weak_names[index % len(weak_names)]
+                concept = practice_names[index % len(practice_names)]
                 item_type = next(types)
+                question_number = question_id_start + index
                 items.append({
-                    "id": f"W{index + 1}", "type": item_type, "concept": concept,
+                    "id": f"W{question_number}", "type": item_type, "concept": concept,
                     "difficulty": difficulties[index],
-                    "question": f"Show what you understand about {concept} in this new example.",
+                    "question": f"Practice example {question_number}: Show what you understand about {concept}.",
                     "options": ["First idea", "Second idea", "Third idea"] if item_type == "multiple_choice" else [],
                     "solution_steps": [
                         f"Identify what the question is asking about {concept}.",
@@ -111,9 +117,10 @@ class MockProvider:
                     "keywords": evidence["concept_keywords"].get(concept, [])[:4],
                 })
             return {
-                "title": f"My practice: {', '.join(weak_names)}",
-                "student_name": evidence["student_ref"], "target_concepts": weak_names,
-                "instructions": "Read each question carefully. Show your thinking and use scientific words where helpful.",
+                "title": f"My practice: {evidence['assessment']['subject']}",
+                "student_name": evidence["student_ref"],
+                "target_concepts": list(dict.fromkeys(practice_names)),
+                "instructions": "Read each question carefully. Show your thinking and use the key subject words where helpful.",
                 "questions": items,
             }
         raise ValueError(f"Unsupported response schema: {response_schema.__name__}")
