@@ -52,17 +52,35 @@ def render_worksheet(db: Session, item: StudentAssessment) -> str:
     content = artifact.structured_output
     questions = "".join(
         f"<div class='card'><strong>{escape(q['id'])}. {escape(q['question'])}</strong>"
-        "<p>________________________________________</p></div>"
+        + (
+            "<ol>" + "".join(
+                f"<li>{escape(option)}</li>" for option in q.get("options", [])
+            ) + "</ol>"
+            if q.get("options") else ""
+        )
+        + "<p>________________________________________</p></div>"
         for q in content["questions"]
     )
     key = "".join(
-        f"<tr><td>{escape(q['id'])}</td><td>{escape(q['answer'])}</td></tr>"
+        f"<div class='card'><h3>{escape(q['id'])}. Step-by-step solution</h3>"
+        + (
+            "<ol>" + "".join(
+                f"<li>{escape(step)}</li>" for step in q.get("solution_steps", [])
+            ) + "</ol>"
+            if q.get("solution_steps")
+            else "<p>Regenerate this worksheet to add a guided solution.</p>"
+        )
+        + f"<p><strong>Final answer:</strong> {escape(q['answer'])}</p>"
+        + (
+            f"<p><strong>Exam tip:</strong> {escape(q['exam_tip'])}</p>"
+            if q.get("exam_tip") else ""
+        )
+        + f"<p><strong>How marks are earned:</strong> {escape(q['marking_notes'])}</p></div>"
         for q in content["questions"]
     )
     body = (
         f"<h1>{escape(content['title'])}</h1><p>{escape(content['instructions'])}</p>"
-        f"{questions}<div style='page-break-before:always'><h2>Answer key</h2>"
-        f"<table>{key}</table></div>"
+        f"{questions}<div style='page-break-before:always'><h2>Guided solutions</h2>"
+        f"{key}</div>"
     )
     return _page(content["title"], body)
-

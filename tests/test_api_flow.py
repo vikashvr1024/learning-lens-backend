@@ -1,8 +1,18 @@
+import json
+from io import BytesIO
 from pathlib import Path
 
+from pypdf import PdfReader
 from sqlalchemy import func, select
 
-from app.models import AIGeneration, Assessment, Question, QuestionScore, StudentAssessment, Worksheet
+from app.models import (
+    AIGeneration,
+    Assessment,
+    Question,
+    QuestionScore,
+    StudentAssessment,
+    Worksheet,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -34,9 +44,108 @@ def test_complete_demo_flow(client):
         response = client.post(f"/api/v1/students/{student_id}/{endpoint}", json={})
         assert response.status_code == 200, response.text
         assert response.json()["content"]
+        if endpoint == "generate-worksheet":
+            for question in response.json()["content"]["questions"]:
+                assert len(question["solution_steps"]) >= 2
+                assert question["answer"]
+                assert question["exam_tip"]
 
-    assert client.get(f"/api/v1/students/{student_id}/report").status_code == 200
-    assert client.get(f"/api/v1/students/{student_id}/worksheet").status_code == 200
+    report = client.get(f"/api/v1/students/{student_id}/report")
+    worksheet = client.get(f"/api/v1/students/{student_id}/worksheet")
+    for response in (report, worksheet):
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["content-disposition"].startswith("inline")
+        assert response.content.startswith(b"%PDF-")
+        assert len(PdfReader(BytesIO(response.content)).pages) >= 1
+
+    downloaded = client.get(
+        f"/api/v1/students/{student_id}/report", params={"download": "true"}
+    )
+    assert downloaded.headers["content-disposition"].startswith("attachment")
+
+
+def test_support_generation_accepts_an_unrelated_blueprint_and_csv(client):
+    created = client.post("/api/v1/assessments", json={"title": "New blueprint"}).json()
+    blueprint = {
+        "assessment": {
+            "id": "maths-wa2-2026", "title": "Term 2 Mathematics WA2",
+            "subject": "Mathematics", "grade": "Secondary 1", "total_marks": 20,
+        },
+        "questions": [
+            {
+                "question_id": "Q1", "question_number": 1, "max_marks": 5,
+                "topic": "Algebra", "concept": "Expanding Algebraic Expressions",
+                "skill": "Procedural fluency", "cognitive_category": "Application",
+                "learning_objectives": ["Expand a single bracket"],
+                "keywords": ["coefficient", "term"],
+            },
+            {
+                "question_id": "Q2", "question_number": 2, "max_marks": 5,
+                "topic": "Algebra", "concept": "Solving Linear Equations",
+                "skill": "Problem solving", "cognitive_category": "Reasoning",
+                "learning_objectives": ["Solve a two-step linear equation"],
+                "keywords": ["inverse operation", "equation"],
+            },
+            {
+                "question_id": "Q3", "question_number": 3, "max_marks": 5,
+                "topic": "Statistics", "concept": "Interpreting Statistical Diagrams",
+                "skill": "Data interpretation", "cognitive_category": "Analysis",
+                "learning_objectives": ["Read values from a statistical diagram"],
+                "keywords": ["scale", "frequency"],
+            },
+            {
+                "question_id": "Q4", "question_number": 4, "max_marks": 5,
+                "topic": "Geometry", "concept": "Angles in Parallel Lines",
+                "skill": "Deduction", "cognitive_category": "Reasoning",
+                "learning_objectives": ["Find an unknown angle"],
+                "keywords": ["corresponding", "alternate"],
+            },
+        ],
+    }
+    uploaded = client.post(
+        f"/api/v1/assessments/{created['id']}/blueprint",
+        files={
+            "file": (
+                "maths-blueprint.json", json.dumps(blueprint).encode(), "application/json",
+            )
+        },
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    imported = client.post(
+        f"/api/v1/assessments/{created['id']}/results",
+        files={
+            "file": (
+                "maths-results.csv",
+                b"student_id,student_name,Q1,Q2,Q3,Q4\nS004,Farah Ismail,1,0,1,0\n",
+                "text/csv",
+            )
+        },
+    )
+    assert imported.status_code == 200, imported.text
+    student_id = client.get(
+        f"/api/v1/assessments/{created['id']}/students"
+    ).json()[0]["id"]
+
+    allowed = {question["concept"] for question in blueprint["questions"]}
+    for endpoint in (
+        "generate-diagnosis", "generate-recommendations", "generate-lesson-plan",
+        "generate-worksheet",
+    ):
+        response = client.post(
+            f"/api/v1/students/{student_id}/{endpoint}",
+            json={"duration_minutes": 20, "question_count": 6},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["content"]
+
+    detail = client.get(f"/api/v1/students/{student_id}").json()
+    assert set(detail["artifacts"]["lesson_plan"]["target_concepts"]) <= allowed
+    assert {
+        item["concept"] for item in detail["artifacts"]["worksheet"]["questions"]
+    } <= allowed
+    assert len(detail["artifacts"]["worksheet"]["questions"]) == 6
 
 
 def test_upload_contract_returns_actionable_validation(client):
@@ -47,6 +156,9 @@ def test_upload_contract_returns_actionable_validation(client):
             files={"file": ("blueprint.json", blueprint, "application/json")},
         )
     assert response.status_code == 200
+    saved = client.get(f"/api/v1/assessments/{created['id']}").json()
+    assert saved["title"] == "Cycles test"
+    assert saved["paper_title"] == "P4 Science — Light & Shadows"
     invalid_csv = b"student_id,student_name,Q1\nS1,A,99"
     response = client.post(
         f"/api/v1/assessments/{created['id']}/results",

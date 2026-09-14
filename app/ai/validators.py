@@ -37,6 +37,14 @@ def validate_grounding(output, evidence: dict) -> None:
         actual_difficulties = {level: 0 for level in ("easy", "medium", "challenging")}
         for item in output.questions:
             actual_difficulties[item.difficulty] += 1
+            if any(not step.strip() for step in item.solution_steps):
+                raise AIOutputValidationError(
+                    f"Worksheet question {item.id} contains an empty solution step."
+                )
+            if item.answer.strip() in {step.strip() for step in item.solution_steps}:
+                raise AIOutputValidationError(
+                    f"Worksheet question {item.id} repeated the final answer as a solution step."
+                )
         if actual_difficulties != evidence["options"]["difficulty_counts"]:
             raise AIOutputValidationError("Worksheet difficulty distribution did not match the request.")
     if not set(used).issubset(allowed):

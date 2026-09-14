@@ -7,18 +7,27 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.ai.interface import AIProvider
+from app.ai.providers.mock import MockProvider
 from app.ai.validators import AIOutputValidationError, validate_grounding
 
 logger = logging.getLogger(__name__)
 
 
 class AIGenerationFailed(RuntimeError):
-    pass
+    def __init__(self, message: str, metadata: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.metadata = metadata or {}
 
 
-def evidence_fingerprint(evidence: dict[str, Any], generation_type: str, model: str) -> str:
+def evidence_fingerprint(
+    evidence: dict[str, Any], generation_type: str, model: str,
+    prompt_version: str = "",
+) -> str:
     canonical = json.dumps(
-        {"evidence": evidence, "generation_type": generation_type, "model": model},
+        {
+            "evidence": evidence, "generation_type": generation_type,
+            "model": model, "prompt_version": prompt_version,
+        },
         sort_keys=True, separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -62,5 +71,48 @@ async def generate_validated(
         "attempts": 3, "success": False, "validation_errors": failures,
     }
     logger.warning("ai_generation_failed", extra=metadata)
-    raise AIGenerationFailed("AI generation failed validation.")
+    raise AIGenerationFailed("AI generation failed validation.", metadata)
 
+
+async def generate_validated_with_fallback(
+    provider: AIProvider,
+    *,
+    generation_type: str,
+    system_prompt: str,
+    prompt_version: str,
+    evidence: dict[str, Any],
+    response_schema: type[BaseModel],
+) -> tuple[BaseModel, dict[str, Any]]:
+    """Use the grounded deterministic provider when real AI exhausts validation retries."""
+    try:
+        return await generate_validated(
+            provider,
+            generation_type=generation_type,
+            system_prompt=system_prompt,
+            prompt_version=prompt_version,
+            evidence=evidence,
+            response_schema=response_schema,
+        )
+    except AIGenerationFailed as error:
+        if provider.name == "mock":
+            raise
+
+        fallback = MockProvider()
+        output, metadata = await generate_validated(
+            fallback,
+            generation_type=generation_type,
+            system_prompt=system_prompt,
+            prompt_version=prompt_version,
+            evidence=evidence,
+            response_schema=response_schema,
+        )
+        metadata.update({
+            "fallback": True,
+            "fallback_reason": "primary_output_failed_validation",
+            "primary_provider": provider.name,
+            "primary_model": provider.model,
+            "primary_attempts": error.metadata.get("attempts", 3),
+            "primary_validation_errors": error.metadata.get("validation_errors", []),
+        })
+        logger.warning("ai_generation_fallback", extra=metadata)
+        return output, metadata

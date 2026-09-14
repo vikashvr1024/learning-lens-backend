@@ -74,7 +74,9 @@ class WorksheetQuestion(StrictModel):
     difficulty: Literal["easy", "medium", "challenging"]
     question: str
     options: list[str] = Field(default_factory=list)
+    solution_steps: list[str] = Field(min_length=2)
     answer: str
+    exam_tip: str
     marking_notes: str
     keywords: list[str] = Field(default_factory=list)
 
@@ -85,4 +87,3 @@ class WorksheetOutput(StrictModel):
     target_concepts: list[str]
     instructions: str
     questions: list[WorksheetQuestion]
-

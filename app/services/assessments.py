@@ -42,7 +42,8 @@ def save_blueprint(db: Session, assessment: Assessment, blueprint: Blueprint) ->
         raise ValueError(f"An assessment with blueprint ID {blueprint.assessment.id} already exists.")
     db.execute(delete(Question).where(Question.assessment_id == assessment.id))
     assessment.external_id = blueprint.assessment.id
-    assessment.title = blueprint.assessment.title
+    # Keep the name chosen by the user. The AI-extracted paper title remains in
+    # blueprint_json and is returned separately as paper_title for context.
     assessment.subject = blueprint.assessment.subject
     assessment.grade = blueprint.assessment.grade
     assessment.blueprint_json = blueprint.model_dump(mode="json")
@@ -122,9 +123,12 @@ def import_results(db: Session, assessment: Assessment, content: bytes) -> list[
 
 def assessment_summary(assessment: Assessment) -> dict[str, Any]:
     aggregate = assessment.aggregate_json or {}
+    paper_title = (assessment.blueprint_json or {}).get("assessment", {}).get("title")
     return {
         "id": assessment.id, "external_id": assessment.external_id,
-        "title": assessment.title, "subject": assessment.subject, "grade": assessment.grade,
+        "title": assessment.title,
+        "paper_title": paper_title if paper_title != assessment.title else None,
+        "subject": assessment.subject, "grade": assessment.grade,
         "status": assessment.status, "question_count": len((assessment.blueprint_json or {}).get("questions", [])),
         "student_count": aggregate.get("student_count", 0),
         "class_average": aggregate.get("class_average", 0),

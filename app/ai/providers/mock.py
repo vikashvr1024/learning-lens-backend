@@ -20,8 +20,8 @@ class MockProvider:
         if response_schema is Diagnosis:
             return {
                 "summary": (
-                    f"This learner is ready to build confidence in {', '.join(weak_names)} "
-                    "through focused, hands-on practice."
+                    f"You are ready to build confidence in {', '.join(weak_names)}. "
+                    "Use the guide one step at a time, practise, and check your own answers."
                 ),
                 "strengths": [
                     {"concept": item["name"], "evidence": f"Secure performance on {', '.join(item['question_ids'])}."}
@@ -33,22 +33,33 @@ class MockProvider:
                         "severity": "high" if item["percentage"] < 50 else "medium",
                         "reasoning_type": item["reasoning_type"],
                         "evidence": f"Performance on {', '.join(item['question_ids'])} needs support.",
-                        "explanation": f"Use concrete examples to revisit {item['name']}.",
+                        "explanation": (
+                            f"You need more practice with {item['name']}. Start with one simple "
+                            "example, explain the rule in your own words, and then try a new example."
+                        ),
                     }
                     for item in weak
                 ],
                 "encouragement": "You already have useful ideas to build on. Take one step at a time and explain what you notice.",
-                "teacher_focus": [f"Model one example of {name}, then ask the learner to explain it." for name in weak_names],
+                "teacher_focus": [
+                    f"Read the notes for {name}, copy one worked example, then solve a similar example alone."
+                    for name in weak_names
+                ],
             }
         if response_schema is Recommendations:
             return {"recommendations": [
                 {
                     "concept": item["name"], "priority": "high" if index == 0 else "medium",
                     "why": f"This concept is supported by evidence from {', '.join(item['question_ids'])}.",
-                    "teaching_approach": "Use a predict-observe-explain routine with a familiar object.",
-                    "mini_activity": f"Ask the learner to draw a prediction about {item['name']}, test it, and explain the result.",
-                    "misconception_to_watch": "Check whether the learner changes the explanation after observing evidence.",
-                    "follow_up_check": "Give one new situation and ask for a prediction with a because statement.",
+                    "teaching_approach": (
+                        "Study one worked example, explain each step, then try a similar example."
+                    ),
+                    "mini_activity": (
+                        f"1. Write what you know about {item['name']}. 2. Practise one example. "
+                        "3. Explain the method and check your work."
+                    ),
+                    "misconception_to_watch": "Check that the explanation uses the relevant rule, fact, or method.",
+                    "follow_up_check": "Try one new example and explain why the answer or conclusion follows.",
                 }
                 for index, item in enumerate(weak[:3])
             ]}
@@ -63,14 +74,17 @@ class MockProvider:
                 "title": f"Build confidence with {', '.join(weak_names)}",
                 "target_concepts": weak_names,
                 "duration_minutes": duration,
-                "objectives": [f"Explain {name} using evidence from an observation." for name in weak_names],
-                "materials": ["paper", "pencil", "simple classroom objects"],
-                "warm_up": {"minutes": warm_up, "activity": "Share one observation and one question."},
-                "explicit_instruction": {"minutes": explicit, "activity": f"Model a clear example of {weak_names[0]}."},
-                "guided_practice": {"minutes": guided, "activity": "Predict, observe, and explain with teacher prompts."},
-                "independent_practice": {"minutes": independent, "activity": "Complete one new example and label the evidence."},
-                "assessment_check": {"minutes": check, "activity": "Explain a new case in one sentence."},
-                "teacher_notes": ["Praise evidence-based explanations.", "Do not introduce concepts outside this assessment."],
+                "objectives": [
+                    f"Explain {name} using the relevant facts, steps, or evidence."
+                    for name in weak_names
+                ],
+                "materials": ["paper", "pencil", "assessment revision notes"],
+                "warm_up": {"minutes": warm_up, "activity": "Write one fact you remember and one question you still have."},
+                "explicit_instruction": {"minutes": explicit, "activity": f"Read the explanation of {weak_names[0]}. Copy the main rule and say it aloud in your own words."},
+                "guided_practice": {"minutes": guided, "activity": "Follow one worked example step by step. Cover it, then repeat the same method from memory."},
+                "independent_practice": {"minutes": independent, "activity": "Complete one new example alone. Circle the keyword or evidence that supports your answer."},
+                "assessment_check": {"minutes": check, "activity": "Answer one new case in a complete sentence, then compare every step with the solution."},
+                "teacher_notes": ["Use evidence in every explanation.", "Revise only the concepts from this assessment."],
             }
         if response_schema is WorksheetOutput:
             count = evidence["options"]["question_count"]
@@ -86,7 +100,13 @@ class MockProvider:
                     "difficulty": difficulties[index],
                     "question": f"Show what you understand about {concept} in this new example.",
                     "options": ["First idea", "Second idea", "Third idea"] if item_type == "multiple_choice" else [],
+                    "solution_steps": [
+                        f"Identify what the question is asking about {concept}.",
+                        "Recall the matching rule or keyword from your revision notes.",
+                        "Apply the rule to the example and check that your explanation answers the question.",
+                    ],
                     "answer": f"A correct response explains {concept} using the blueprint keywords.",
+                "exam_tip": "Use the key subject word and explain how it supports your answer.",
                     "marking_notes": "Award credit for a clear idea supported by relevant evidence.",
                     "keywords": evidence["concept_keywords"].get(concept, [])[:4],
                 })

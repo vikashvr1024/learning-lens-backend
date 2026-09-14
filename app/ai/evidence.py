@@ -13,12 +13,19 @@ def build_evidence(
     question_count: int = 8,
 ) -> dict[str, Any]:
     concept_context: dict[str, dict[str, set[str]]] = defaultdict(
-        lambda: {"skills": set(), "cognitive": set(), "keywords": set()}
+        lambda: {
+            "skills": set(), "cognitive": set(), "keywords": set(),
+            "learning_objectives": set(), "question_ids": set(),
+        }
     )
     for question in blueprint.questions:
         concept_context[question.concept]["skills"].add(question.skill)
         concept_context[question.concept]["cognitive"].add(question.cognitive_category)
         concept_context[question.concept]["keywords"].update(question.keywords)
+        concept_context[question.concept]["learning_objectives"].update(
+            question.learning_objectives
+        )
+        concept_context[question.concept]["question_ids"].add(question.question_id)
 
     concepts = []
     for metric in analysis.concepts:
@@ -60,10 +67,17 @@ def build_evidence(
         "concept_keywords": {
             name: sorted(values["keywords"]) for name, values in concept_context.items()
         },
+        "concept_learning_objectives": {
+            name: sorted(values["learning_objectives"])
+            for name, values in concept_context.items()
+        },
+        "concept_question_ids": {
+            name: sorted(values["question_ids"])
+            for name, values in concept_context.items()
+        },
         "options": {
             "duration_minutes": duration_minutes,
             "question_count": question_count,
             "difficulty_counts": {"easy": easy, "medium": medium, "challenging": challenging},
         },
     }
-

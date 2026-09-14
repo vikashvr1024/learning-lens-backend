@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.ai.evidence import build_evidence
 from app.ai.factory import get_ai_provider
 from app.ai.schemas import Diagnosis, LessonPlan, Recommendations, WorksheetOutput
-from app.ai.service import evidence_fingerprint, generate_validated
+from app.ai.service import evidence_fingerprint, generate_validated_with_fallback
 from app.core.config import Settings
 from app.models import AIGeneration, StudentAssessment, Worksheet
 from app.prompts.diagnostic import DIAGNOSTIC_PROMPT_VERSION, DIAGNOSTIC_SYSTEM_PROMPT
@@ -44,7 +44,9 @@ async def generate_artifact(
         blueprint, analysis, duration_minutes=duration_minutes, question_count=question_count
     )
     provider = get_ai_provider(settings)
-    fingerprint = evidence_fingerprint(evidence, generation_type, provider.model)
+    fingerprint = evidence_fingerprint(
+        evidence, generation_type, provider.model, prompt_version=version
+    )
     if not force:
         cached = db.scalar(
             select(AIGeneration).where(
@@ -55,13 +57,13 @@ async def generate_artifact(
         )
         if cached:
             return {"id": cached.id, "type": generation_type, "content": cached.structured_output, "cached": True}
-    output, metadata = await generate_validated(
+    output, metadata = await generate_validated_with_fallback(
         provider, generation_type=generation_type, system_prompt=prompt,
         prompt_version=version, evidence=evidence, response_schema=schema,
     )
     record = AIGeneration(
         student_assessment_id=item.id, generation_type=generation_type,
-        provider=provider.name, model=provider.model, prompt_version=version,
+        provider=metadata["provider"], model=metadata["model"], prompt_version=version,
         input_fingerprint=fingerprint, structured_output=output.model_dump(mode="json"),
         validation_metadata=metadata,
     )
@@ -71,4 +73,3 @@ async def generate_artifact(
     db.commit()
     db.refresh(record)
     return {"id": record.id, "type": generation_type, "content": record.structured_output, "cached": False}
-

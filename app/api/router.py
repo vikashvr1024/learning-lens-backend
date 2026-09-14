@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.ingestion.blueprint import parse_blueprint
 from app.ingestion.errors import IngestionError
 from app.models import AIGeneration, Assessment
-from app.reports.html import render_student_report, render_worksheet
+from app.reports.pdf import render_student_report_pdf, render_worksheet_pdf
 from app.services.assessments import (
     assessment_summary,
     batch_summary_csv,
@@ -337,20 +337,37 @@ async def generate_worksheet(student_assessment_id: str, options: GenerationOpti
     return await _generate(student_assessment_id, "worksheet", options, db)
 
 
-@router.get("/students/{student_assessment_id}/report", response_class=HTMLResponse)
-def student_report(student_assessment_id: str, db: Db):
+def _pdf_response(content: bytes, filename: str, download: bool) -> Response:
+    disposition = "attachment" if download else "inline"
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/students/{student_assessment_id}/report")
+def student_report(student_assessment_id: str, db: Db, download: bool = False):
     item = get_student_assessment(db, student_assessment_id)
     if not item:
         raise not_found("Student assessment")
-    return render_student_report(db, item)
+    return _pdf_response(
+        render_student_report_pdf(db, item), "student-exam-guide.pdf", download
+    )
 
 
-@router.get("/students/{student_assessment_id}/worksheet", response_class=HTMLResponse)
-def worksheet_report(student_assessment_id: str, db: Db):
+@router.get("/students/{student_assessment_id}/worksheet")
+def worksheet_report(student_assessment_id: str, db: Db, download: bool = False):
     item = get_student_assessment(db, student_assessment_id)
     if not item:
         raise not_found("Student assessment")
-    return render_worksheet(db, item)
+    return _pdf_response(
+        render_worksheet_pdf(db, item), "student-practice-worksheet.pdf", download
+    )
 
 
 @router.get("/assessments/{assessment_id}/summary.csv", response_class=PlainTextResponse)
